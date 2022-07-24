@@ -25,3 +25,8 @@ hs_err_pid*
 # Java folders
 lib/
 bin/
+
+# Yuki's project environment
+*.edex
+testmod/
+.vscode/
