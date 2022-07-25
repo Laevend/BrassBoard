@@ -13,4 +13,9 @@ public class PrintUtils
     {
         Bukkit.getConsoleSender().sendMessage("§8[§9bb§8] §8> §aLOGGING §8>§7 " + message);
     }    
+
+    public static String plural(int count, String single, String plural)
+    {
+        return count == 1 ? single : plural;
+    }
 }

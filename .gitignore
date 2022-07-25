@@ -28,5 +28,5 @@ bin/
 
 # Yuki's project environment
 *.edex
-testmod/
 .vscode/
+noble/

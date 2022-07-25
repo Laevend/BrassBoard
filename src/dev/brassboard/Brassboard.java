@@ -1,13 +1,18 @@
 package dev.brassboard;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
 import org.bukkit.Bukkit;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import dev.brassboard.core.booter.TrinketBooter;
 import dev.brassboard.loader.ModuleLoader;
+import dev.brassboard.loader.SimpleModuleClassLoader;
+import dev.brassboard.loader.SimpleModuleLoader;
 import dev.brassboard.module.Booter;
 import dev.brassboard.util.PrintUtils;
 
@@ -16,8 +21,14 @@ public class Brassboard extends JavaPlugin
     private static String NMS_VERSION; 
     private static JavaPlugin INSTANCE;
     
+    private static Map<String, Booter> REGISTERED_BOOTERS = new HashMap<>();
     private static Map<String, ModuleLoader> REGISTERED_LOADERS = new HashMap<>();
+
     private static Booter BOOTER;
+
+    private static final String BASE_FILEPATH = "plugins/Brassboard/";
+
+    private static FileConfiguration CONFIG;
 
     @Override
     public void onEnable()
@@ -28,11 +39,53 @@ public class Brassboard extends JavaPlugin
         PrintUtils.logVerbose("Starting Brassboard...");
         PrintUtils.log("API version is " + getNmsVersion());
 
-        // TODO Load module loaders and MCLs from folders
 
-        setBooter(new TrinketBooter());        
+        // Load configuration
+        File base = new File(BASE_FILEPATH);
+        File configFile = new File(BASE_FILEPATH, "Brassboard.yml");
+        if (!configFile.exists())
+            this.saveResource("Brassboard.yml", false);
 
-        PrintUtils.log("Passing control over to booter §a" + BOOTER.getClass().getSimpleName() + "§7...");
+        CONFIG = YamlConfiguration.loadConfiguration(configFile);
+
+        // Generate file structure
+        if (!base.exists())      
+            base.mkdirs();
+            
+        File booterPath = new File(base, "booters");
+        File loaderPath = new File(base, "loaders");
+        File modulePath = new File(base, "modules");
+
+        if (!booterPath.exists())
+            booterPath.mkdirs();
+        if (!loaderPath.exists())
+            loaderPath.mkdirs();
+        if (!modulePath.exists())
+            modulePath.mkdirs();
+
+        // Load booters and loaders
+        registerLoader(new SimpleModuleLoader());
+        loadBooters(booterPath);
+        loadModuleLoaders(loaderPath);
+
+        PrintUtils.log("The following " + PrintUtils.plural(REGISTERED_BOOTERS.size(), "booter is", "booters are") + " available:");
+        REGISTERED_BOOTERS.values().forEach((booter) -> PrintUtils.log("- " + booter.getClass().getSimpleName()));
+        PrintUtils.log("The following " + PrintUtils.plural(REGISTERED_LOADERS.size(), "module loader is", "module loaders are") + " available:");
+        REGISTERED_LOADERS.values().forEach((loader) -> PrintUtils.log("- " + loader.getName()));
+
+        // Select booter based on config
+        if (CONFIG.contains("booter"))
+            BOOTER = REGISTERED_BOOTERS.get(CONFIG.getString("booter"));
+
+        // Perform boot
+        if (BOOTER == null)
+        {
+            PrintUtils.log("§cFailed to find booter \"" + CONFIG.getString("booter") + "\"");
+            PrintUtils.log("§cBrassboard failed to load. Please supply a valid booter.");
+            return;
+        }    
+        
+        PrintUtils.log("Booting using booter §a" + BOOTER.getClass().getSimpleName() + "§7...");
 
         BOOTER.boot();
 
@@ -44,6 +97,48 @@ public class Brassboard extends JavaPlugin
     {
         
     }
+
+    //
+    // Loading
+    //
+
+    private void loadBooters(File booterPath)
+    {
+        for (File f : booterPath.listFiles())
+        {
+            try {
+                SimpleModuleClassLoader scl = new SimpleModuleClassLoader(f, getLoader("Brassboard"));
+
+                scl.collect(Booter.class).forEach((booter) -> registerBooter((Booter) booter));
+
+                scl.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+                continue;
+            }
+        }
+    }
+
+    private void loadModuleLoaders(File loaderPath)
+    {
+        for (File f : loaderPath.listFiles())
+        {
+            try {
+                SimpleModuleClassLoader scl = new SimpleModuleClassLoader(f, getLoader("Brassboard"));
+
+                scl.collect(ModuleLoader.class).forEach((loader) -> registerLoader((ModuleLoader) loader));
+
+                scl.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+                continue;
+            }
+        }
+    }
+
+    //
+    // Getters
+    //
 
     public static JavaPlugin getInstance()
     {
@@ -59,16 +154,7 @@ public class Brassboard extends JavaPlugin
 		NMS_VERSION = bukkitPackage.substring(bukkitPackage.lastIndexOf('.') + 1);
 
         return getNmsVersion();
-    }
-
-    public static void setBooter(Booter booter)
-    {
-        if (booter == null)
-            return;
-
-        PrintUtils.log("Switching booters: " + (BOOTER != null ? "§b" + BOOTER.getClass().getSimpleName() : "§cNo booter") + " §7->§a " + booter.getClass().getSimpleName());
-        BOOTER = booter;
-    }
+    } 
 
     public static ModuleLoader getLoader(String name)
     {
@@ -78,5 +164,10 @@ public class Brassboard extends JavaPlugin
     public static void registerLoader(ModuleLoader loader)
     {
         REGISTERED_LOADERS.put(loader.getName(), loader);
+    }
+
+    public static void registerBooter(Booter booter)
+    {
+        REGISTERED_BOOTERS.put(booter.getClass().getSimpleName(), booter);
     }
 }
